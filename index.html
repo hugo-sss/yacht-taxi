@@ -782,7 +782,9 @@ function update(dt){
       const wsd=Math.sqrt(wsdx*wsdx+wsdy*wsdy);
       if(wsd<200){
         const pull=0.15*(1-wsd/200);
-        PL.vx+=wsdx/wsd*pull; PL.vy+=wsdy/wsd*pull;
+        if(wsd>0.0001){
+          PL.vx+=wsdx/wsd*pull; PL.vy+=wsdy/wsd*pull;
+        }
         if(wsd<waterspout.r+20){popup('🌪️ WATERSPOUT! GET OUT!');cam.shake=0.6;}
       }
     }
@@ -955,7 +957,10 @@ function update(dt){
 
   // wind display removed
 
-  // Camera
+  // Camera + NaN safety recovery
+  if(!Number.isFinite(PL.x)||!Number.isFinite(PL.y)||!Number.isFinite(PL.vx)||!Number.isFinite(PL.vy)){
+    PL.x=1140; PL.y=1080; PL.vx=0; PL.vy=0; PL.spd=0;
+  }
   const shk=cam.shake>0?(Math.random()-0.5)*cam.shake*12:0;
   cam.x+=(PL.x-W/2-cam.x)*0.14+shk;
   cam.y+=(PL.y-H/2-cam.y)*0.14+shk;
@@ -1091,6 +1096,40 @@ function drawMarina(loc, isPickup, isDest) {
   const {cx,cy,face,col,name} = loc;
   const pulse = 0.5+0.5*Math.sin(Date.now()*0.005);
 
+  function shouldDrawMooredBoat(slipIdx){
+    // Mission slip must remain visibly open
+    if(isPickup && fare && fare.pickupSlip && fare.pickupSlip.idx===slipIdx) return false;
+    if(isDest   && fare && fare.destSlip   && fare.destSlip.idx===slipIdx) return false;
+    // Deterministic occupancy per slip (so marina feels alive but not packed)
+    const seed = Math.abs(Math.floor(cx*0.31 + cy*0.17 + slipIdx*19)) % 100;
+    return seed < 42; // ~42% occupied
+  }
+
+  function drawMooredYacht(x,y,heading,accent='#2f6ea8'){
+    X.save();
+    X.translate(x,y);
+    X.rotate(heading);
+    // Shadow
+    X.fillStyle='rgba(0,0,0,0.25)';
+    X.beginPath(); X.ellipse(1,2,11,24,0,0,Math.PI*2); X.fill();
+    // Hull (cleaner yacht silhouette)
+    X.fillStyle='#f5f7fa';
+    X.beginPath();
+    X.moveTo(0,-24);
+    X.quadraticCurveTo(10,-14,10,10);
+    X.quadraticCurveTo(8,22,0,24);
+    X.quadraticCurveTo(-8,22,-10,10);
+    X.quadraticCurveTo(-10,-14,0,-24);
+    X.closePath(); X.fill();
+    X.strokeStyle='#cfd7de'; X.lineWidth=1.2; X.stroke();
+    // Deck + windows
+    X.fillStyle='#d8b87a'; X.fillRect(-5,-3,10,16);
+    X.fillStyle='rgba(40,70,95,0.85)'; X.fillRect(-5,-13,10,6);
+    // Accent stripe
+    X.fillStyle=accent; X.fillRect(-8,0,16,2.5);
+    X.restore();
+  }
+
   if(isPickup||isDest){
     X.beginPath(); X.arc(cx,cy,110+pulse*20,0,Math.PI*2);
     X.strokeStyle=isPickup?`rgba(255,215,0,${0.5+pulse*0.3})`:`rgba(0,255,100,${0.5+pulse*0.3})`;
@@ -1146,16 +1185,11 @@ function drawMarina(loc, isPickup, isDest) {
     drawPier(cx-180,cy+sign*162,360,sign*18,'h');
     // 5 finger piers
     for(let i=0;i<5;i++) drawPier(cx-140+i*68,cy+sign*30,14,sign*130,'v');
-    // Moored boats in each berth
+    // Optional moored boats in occupied berths only
     for(let i=0;i<4;i++){
+      if(!shouldDrawMooredBoat(i)) continue;
       const bx=cx-106+i*68, by=cy+sign*90;
-      X.save(); X.translate(bx,by); X.rotate(face==='S'?0:Math.PI);
-      // Yacht hull
-      X.fillStyle='#f0f0f0'; X.beginPath();
-      X.moveTo(0,-22); X.lineTo(10,-15); X.lineTo(10,20); X.lineTo(-10,20); X.lineTo(-10,-15); X.closePath(); X.fill();
-      X.fillStyle='#e8390e'; X.fillRect(-10,-8,20,3); // stripe
-      X.fillStyle='rgba(180,160,120,0.7)'; X.fillRect(-7,-4,14,18); // deck
-      X.restore();
+      drawMooredYacht(bx,by,face==='S'?0:Math.PI,'#2f6ea8');
       // Mooring lines
       X.strokeStyle='rgba(255,255,255,0.4)'; X.lineWidth=1.5; X.setLineDash([4,3]);
       const ly=by+(face==='S'?22:-22);
@@ -1186,13 +1220,9 @@ function drawMarina(loc, isPickup, isDest) {
     drawPier(cx+sign*162,cy-180,sign*18,360,'v');
     for(let i=0;i<5;i++) drawPier(cx+sign*30,cy-140+i*68,sign*130,14,'h');
     for(let i=0;i<4;i++){
+      if(!shouldDrawMooredBoat(i)) continue;
       const bx=cx+sign*90, by=cy-106+i*68;
-      X.save(); X.translate(bx,by); X.rotate(face==='E'?Math.PI/2:-Math.PI/2);
-      X.fillStyle='#f0f0f0'; X.beginPath();
-      X.moveTo(0,-22); X.lineTo(10,-15); X.lineTo(10,20); X.lineTo(-10,20); X.lineTo(-10,-15); X.closePath(); X.fill();
-      X.fillStyle='#2244aa'; X.fillRect(-10,-8,20,3);
-      X.fillStyle='rgba(180,160,120,0.7)'; X.fillRect(-7,-4,14,18);
-      X.restore();
+      drawMooredYacht(bx,by,face==='E'?Math.PI/2:-Math.PI/2,'#1e4f8f');
     }
     X.strokeStyle='#aaa'; X.lineWidth=2;
     X.beginPath(); X.moveTo(cx+sign*178,cy-165); X.lineTo(cx+sign*148,cy-165); X.stroke();
