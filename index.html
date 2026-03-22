@@ -278,25 +278,19 @@ function getActiveSlip(loc, seed){
 
 // Build marina solid rects for collision (harbour walls + main pier)
 function getMarinaRects(loc) {
-  // Only use the main quay as solid collision — no invisible corner traps
-  // Breakwater tips are removed (player was hitting invisible ends)
+  // Open-slip geometry: no enclosing side walls, wider approaches
   const {cx,cy,face} = loc;
   const rects = [];
   if (face==='S' || face==='N') {
     const sign = face==='S' ? 1 : -1;
-    // Breakwater inner faces only (shorter, no tip traps)
-    rects.push({x:cx-176, y:cy+sign*10, w:44, h:sign*155});
-    rects.push({x:cx+132, y:cy+sign*10, w:44, h:sign*155});
-    // Back quay
-    rects.push({x:cx-176, y:cy+sign*158, w:352, h:18});
-    // Finger piers (thin — player can squeeze between)
-    for(let i=0;i<5;i++) rects.push({x:cx-138+i*68, y:cy+sign*32, w:12, h:sign*124});
+    // Back quay only
+    rects.push({x:cx-176, y:cy+sign*168, w:352, h:18});
+    // Shorter finger piers to keep slips reachable
+    for(let i=0;i<5;i++) rects.push({x:cx-138+i*68, y:cy+sign*52, w:12, h:sign*102});
   } else {
     const sign = face==='E' ? 1 : -1;
-    rects.push({x:cx+sign*10,  y:cy-176, w:sign*155, h:44});
-    rects.push({x:cx+sign*10,  y:cy+132, w:sign*155, h:44});
-    rects.push({x:cx+sign*158, y:cy-176, w:18,       h:352});
-    for(let i=0;i<5;i++) rects.push({x:cx+sign*32, y:cy-138+i*68, w:sign*124, h:12});
+    rects.push({x:cx+sign*168, y:cy-176, w:18, h:352});
+    for(let i=0;i<5;i++) rects.push({x:cx+sign*52, y:cy-138+i*68, w:sign*102, h:12});
   }
   return rects;
 }
@@ -422,6 +416,7 @@ const VIPS = [
 // ── GAME STATE ─────────────────────────────────────────
 let running=false, gameT=60, cash=0, fares=0, lastTs=0, wave=0;
 let streak=0, bestStreak=0, crashCount=0, lastEndReason='Time ran out';
+let throttleState=0;
 
 // ── Weather system ──────────────────────────────────────────────────────────
 const WEATHERS = ['clear','clear','clear','choppy','fog','storm','waterspout'];
@@ -658,6 +653,12 @@ function update(dt){
   if(gameT<=0){endGame();return;}
 
   const{steer,throttle}=getInput();
+  // Engine spool: slow rise, quicker fall (more boat-like throttle response)
+  const riseRate = 0.85;
+  const fallRate = 2.2;
+  const rate = Math.abs(throttle) > Math.abs(throttleState) ? riseRate : fallRate;
+  throttleState += (throttle - throttleState) * Math.min(1, dt * rate);
+  const throttleEff = throttleState;
 
   // Persistent wind + current drift
   PL.vx += Math.sin(windAngle)*0.012;
@@ -670,12 +671,15 @@ function update(dt){
 
   // Steering model: astern helm is reversed (boat handling realism)
   const spdFrac = Math.min(1, Math.abs(PL.spd)/MAX_SPD);
-  const astern = throttle < -0.05;
+  const astern = throttleEff < -0.05;
   const helmSign = astern ? -1 : 1;
-  const turnRate = astern
-    ? 0.022*(0.25 + spdFrac*0.55) // astern: weaker rudder authority
-    : 0.030*(0.35 + spdFrac*0.65);
-  PL.a += (steer * helmSign)*turnRate + wobble;
+  const baseTurn = astern
+    ? 0.020*(0.20 + spdFrac*0.50) // astern: weaker rudder authority
+    : 0.028*(0.30 + spdFrac*0.60);
+  const fwdX=Math.sin(PL.a), fwdY=-Math.cos(PL.a);
+  const flow = Math.abs(PL.vx*fwdX + PL.vy*fwdY) + Math.max(0, throttleEff)*1.4 + (astern?0.35:0);
+  const rudderEff = Math.min(1, flow/3.2); // near-zero flow => almost no turning
+  PL.a += (steer * helmSign)*baseTurn*rudderEff + wobble;
 
   const boosted = PL.boostT>0;
   const maxSpd  = boosted ? MAX_SPD*1.4 : MAX_SPD;
@@ -683,16 +687,15 @@ function update(dt){
   // Thrust
   const windDot = Math.cos(PL.a-windAngle);
   const windFx  = 1 + windDot*0.06*(PL.spd>1?1:0);
-  if(throttle>0){
-    PL.vx += Math.sin(PL.a)*throttle*ACCEL*windFx;
-    PL.vy -= Math.cos(PL.a)*throttle*ACCEL*windFx;
-  } else if(throttle<0){
-    PL.vx += Math.sin(PL.a)*throttle*ACCEL*0.35;
-    PL.vy -= Math.cos(PL.a)*throttle*ACCEL*0.35;
+  if(throttleEff>0){
+    PL.vx += Math.sin(PL.a)*throttleEff*ACCEL*windFx;
+    PL.vy -= Math.cos(PL.a)*throttleEff*ACCEL*windFx;
+  } else if(throttleEff<0){
+    PL.vx += Math.sin(PL.a)*throttleEff*ACCEL*0.35;
+    PL.vy -= Math.cos(PL.a)*throttleEff*ACCEL*0.35;
   }
 
   // Hull drag / slip: more drift and slide, especially in turns
-  const fwdX=Math.sin(PL.a), fwdY=-Math.cos(PL.a);
   const fd=PL.vx*fwdX+PL.vy*fwdY;
   const lx=PL.vx-fd*fwdX, ly=PL.vy-fd*fwdY;
   const steerSlip = 1 - Math.min(0.22, Math.abs(steer)*0.22); // turning increases side-slip
@@ -1139,14 +1142,14 @@ function drawMarina(loc, isPickup, isDest) {
   function drawPier(rx,ry,rw,rh,dir){
     const ax=Math.min(rx,rx+rw),aw=Math.abs(rw);
     const ay=Math.min(ry,ry+rh),ah=Math.abs(rh);
-    X.fillStyle='rgba(0,0,0,0.4)'; X.fillRect(ax+5,ay+5,aw,ah);
-    X.fillStyle='#5a5a60'; X.fillRect(ax,ay,aw,ah);       // concrete
-    X.fillStyle='#b89050'; X.fillRect(ax+3,ay+3,aw-6,ah-6); // teak
+    X.fillStyle='rgba(0,0,0,0.28)'; X.fillRect(ax+4,ay+4,aw,ah);
+    X.fillStyle='#7a552b'; X.fillRect(ax,ay,aw,ah);       // wood base
+    X.fillStyle='#c79a56'; X.fillRect(ax+3,ay+3,aw-6,ah-6); // teak deck
     X.strokeStyle='rgba(0,0,0,0.2)'; X.lineWidth=0.8;
     const step=8;
     if(dir==='h'){for(let p=ay+8;p<ay+ah-3;p+=step){X.beginPath();X.moveTo(ax+3,p);X.lineTo(ax+aw-3,p);X.stroke();}}
     else{for(let p=ax+8;p<ax+aw-3;p+=step){X.beginPath();X.moveTo(p,ay+3);X.lineTo(p,ay+ah-3);X.stroke();}}
-    X.strokeStyle='#777'; X.lineWidth=2; X.strokeRect(ax,ay,aw,ah);
+    X.strokeStyle='#6a4723'; X.lineWidth=1.6; X.strokeRect(ax,ay,aw,ah);
     // Bollards every 30px
     const bStep=30;
     if(dir==='h'){
@@ -1178,13 +1181,10 @@ function drawMarina(loc, isPickup, isDest) {
     X.fillStyle='rgba(255,200,100,0.85)';
     for(let wi=0;wi<4;wi++) X.fillRect(cx+56+wi*18,cy+sign*188,10,8);
     for(let wi=0;wi<3;wi++) X.fillRect(cx-146+wi*20,cy+sign*188,12,8);
-    // Breakwater arms (long, solid)
-    drawPier(cx-180,cy-sign*30,50,sign*200,'v');
-    drawPier(cx+130,cy-sign*30,50,sign*200,'v');
     // Main quay (back wall)
-    drawPier(cx-180,cy+sign*162,360,sign*18,'h');
-    // 5 finger piers
-    for(let i=0;i<5;i++) drawPier(cx-140+i*68,cy+sign*30,14,sign*130,'v');
+    drawPier(cx-180,cy+sign*170,360,sign*18,'h');
+    // 5 finger piers (shorter, easier approach)
+    for(let i=0;i<5;i++) drawPier(cx-140+i*68,cy+sign*52,14,sign*102,'v');
     // Optional moored boats in occupied berths only
     for(let i=0;i<4;i++){
       if(!shouldDrawMooredBoat(i)) continue;
@@ -1215,10 +1215,8 @@ function drawMarina(loc, isPickup, isDest) {
     X.fillStyle='#1a2a38'; X.fillRect(cx+sign*182,cy+52,sign*46,86);
     X.fillStyle='rgba(255,200,100,0.85)';
     for(let wi=0;wi<4;wi++) X.fillRect(cx+sign*188,cy+56+wi*18,8,10);
-    drawPier(cx-sign*30,cy-180,sign*200,50,'h');
-    drawPier(cx-sign*30,cy+130,sign*200,50,'h');
-    drawPier(cx+sign*162,cy-180,sign*18,360,'v');
-    for(let i=0;i<5;i++) drawPier(cx+sign*30,cy-140+i*68,sign*130,14,'h');
+    drawPier(cx+sign*170,cy-180,sign*18,360,'v');
+    for(let i=0;i<5;i++) drawPier(cx+sign*52,cy-140+i*68,sign*102,14,'h');
     for(let i=0;i<4;i++){
       if(!shouldDrawMooredBoat(i)) continue;
       const bx=cx+sign*90, by=cy-106+i*68;
@@ -1997,7 +1995,7 @@ function startGame(){
   // Spawn in central fairway and force camera recenter
   PL.x=1140;PL.y=1080;PL.a=0;PL.vx=0;PL.vy=0;PL.spd=0;PL.wake=[];PL.boostT=0;PL.nocrash=true;
   cam.x=PL.x-W/2; cam.y=PL.y-H/2; cam.shake=0;
-  cash=0;fares=0;gameT=60;fare=null;pickupIdx=null;
+  cash=0;fares=0;gameT=60;fare=null;pickupIdx=null;throttleState=0;
   streak=0;bestStreak=0;crashCount=0;lastEndReason='Time ran out';
   NPCS.forEach(n=>{n.wake=[];n.scatter=0;});
   windAngle=Math.random()*Math.PI*2;
