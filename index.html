@@ -213,6 +213,17 @@ let W, H;
 function resize() { W = CV.width = window.innerWidth; H = CV.height = window.innerHeight; }
 resize(); window.addEventListener('resize', resize);
 
+// Cache HUD refs once (avoids per-frame DOM querying)
+const HUD = {
+  cash: document.getElementById('h-cash'),
+  time: document.getElementById('h-time'),
+  fares: document.getElementById('h-fares'),
+  speed: document.getElementById('h-speed'),
+  depth: document.getElementById('h-depth'),
+  weather: document.getElementById('h-weather'),
+};
+let hudTick = 0;
+
 // ── WORLD ──────────────────────────────────────────────
 const WW = 2200, WH = 2200;
 const cam = { x: WW/2 - 200, y: WH/2 - 200, shake: 0 };
@@ -893,17 +904,21 @@ function update(dt){
     if(fare)updateFareUI();
   }
 
-  // HUD
-  document.getElementById('h-cash').textContent ='$'+cash.toLocaleString();
-  document.getElementById('h-time').textContent =Math.ceil(gameT);
-  document.getElementById('h-fares').textContent=fares;
-  document.getElementById('h-speed').textContent=Math.round(PL.spd*2.5);
-  document.getElementById('h-time').style.color =gameT<15?'#f00':'#ff0';
-  const depth=getDepth(PL.x,PL.y);
-  document.getElementById('h-depth').textContent=depth+'m';
-  document.getElementById('h-depth').style.color=depth<5?'#f00':depth<15?'#ff0':'#0cf';
-  const wicons={'clear':'☀️','choppy':'🌊','fog':'🌫️','storm':'⛈️','waterspout':'🌪️'};
-  document.getElementById('h-weather').textContent=(wicons[weather]||'☀️');
+  // HUD (update at 10Hz for smoother frame pacing)
+  hudTick -= dt;
+  if (hudTick <= 0) {
+    hudTick = 0.1;
+    HUD.cash.textContent ='$'+cash.toLocaleString();
+    HUD.time.textContent =Math.ceil(gameT);
+    HUD.fares.textContent=fares;
+    HUD.speed.textContent=Math.round(PL.spd*2.5);
+    HUD.time.style.color =gameT<15?'#f00':'#ff0';
+    const depth=getDepth(PL.x,PL.y);
+    HUD.depth.textContent=depth+'m';
+    HUD.depth.style.color=depth<5?'#f00':depth<15?'#ff0':'#0cf';
+    const wicons={'clear':'☀️','choppy':'🌊','fog':'🌫️','storm':'⛈️','waterspout':'🌪️'};
+    HUD.weather.textContent=(wicons[weather]||'☀️');
+  }
 
   // wind display removed
 
@@ -918,7 +933,7 @@ function update(dt){
 // ── DRAW ───────────────────────────────────────────────
 function draw(){
   X.fillStyle='#0d1f33'; X.fillRect(0,0,W,H);
-  X.save(); X.translate(-Math.round(cam.x),-Math.round(cam.y));
+  X.save(); X.translate(-cam.x,-cam.y);
   drawSea(); drawRoads(); drawIslands(); drawBoosts();
   drawDocks(); drawWakes(); drawNPCs(); drawAnchoredBoats(); drawDolphins(); drawPlayer(); drawArrow(); drawWaterspout();
   X.restore();
