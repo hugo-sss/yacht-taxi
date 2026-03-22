@@ -1059,7 +1059,7 @@ function drawIslands(){
     X.fillStyle='rgba(0,0,0,0.4)'; X.fillRect(is.x+8,is.y+8,is.w,is.h);
     // Land base (concrete/sand marina look, not green park)
     const ig=X.createRadialGradient(cx-is.w*0.2,cy-is.h*0.2,4,cx,cy,Math.max(is.w,is.h)/2);
-    ig.addColorStop(0,'#6f767d'); ig.addColorStop(0.7,'#555c63'); ig.addColorStop(1,'#434a52');
+    ig.addColorStop(0,'#d9c7a1'); ig.addColorStop(0.7,'#c7b084'); ig.addColorStop(1,'#b79a6a');
     X.fillStyle=ig; X.fillRect(is.x,is.y,is.w,is.h);
     // Quay edge
     X.strokeStyle='#c8b07a'; X.lineWidth=6; X.strokeRect(is.x,is.y,is.w,is.h);
@@ -1171,12 +1171,12 @@ function drawMarina(loc, isPickup, isDest) {
 
   if(face==='S'||face==='N'){
     const sign=face==='S'?1:-1;
-    // Land backing — quay/apron (neutral concrete)
-    X.fillStyle='#5b6168'; X.fillRect(cx-200,cy+sign*178,400,sign*60);
+    // Land backing — timber/sand tones
+    X.fillStyle='#b89a64'; X.fillRect(cx-200,cy+sign*178,400,sign*60);
     // Harbour buildings
-    X.fillStyle='#2a3a50'; X.fillRect(cx+50, cy+sign*180,90,sign*50);
-    X.fillStyle='#1a2a38'; X.fillRect(cx+52, cy+sign*182,86,sign*46);
-    X.fillStyle='#2a3a50'; X.fillRect(cx-150,cy+sign*182,80,sign*44);
+    X.fillStyle='#d8c39a'; X.fillRect(cx+50, cy+sign*180,90,sign*50);
+    X.fillStyle='#f1e6cf'; X.fillRect(cx+52, cy+sign*182,86,sign*46);
+    X.fillStyle='#d8c39a'; X.fillRect(cx-150,cy+sign*182,80,sign*44);
     // Building windows
     X.fillStyle='rgba(255,200,100,0.85)';
     for(let wi=0;wi<4;wi++) X.fillRect(cx+56+wi*18,cy+sign*188,10,8);
@@ -1210,9 +1210,9 @@ function drawMarina(loc, isPickup, isDest) {
 
   } else {
     const sign=face==='E'?1:-1;
-    X.fillStyle='#5b6168'; X.fillRect(cx+sign*178,cy-200,sign*60,400);
-    X.fillStyle='#2a3a50'; X.fillRect(cx+sign*180,cy+50,sign*50,90);
-    X.fillStyle='#1a2a38'; X.fillRect(cx+sign*182,cy+52,sign*46,86);
+    X.fillStyle='#b89a64'; X.fillRect(cx+sign*178,cy-200,sign*60,400);
+    X.fillStyle='#d8c39a'; X.fillRect(cx+sign*180,cy+50,sign*50,90);
+    X.fillStyle='#f1e6cf'; X.fillRect(cx+sign*182,cy+52,sign*46,86);
     X.fillStyle='rgba(255,200,100,0.85)';
     for(let wi=0;wi<4;wi++) X.fillRect(cx+sign*188,cy+56+wi*18,8,10);
     drawPier(cx+sign*170,cy-180,sign*18,360,'v');
