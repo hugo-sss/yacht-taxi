@@ -668,10 +668,14 @@ function update(dt){
   // Drunk wobble
   const wobble=(fare&&fare.pickedUp&&fare.vip.effect==='wobble')?Math.sin(wave*3)*0.025:0;
 
-  // Steering — give more low-speed rudder authority (less fwd/rev juggling)
+  // Steering model: astern helm is reversed (boat handling realism)
   const spdFrac = Math.min(1, Math.abs(PL.spd)/MAX_SPD);
-  const turnRate = 0.030*(0.35 + spdFrac*0.65);
-  PL.a += steer*turnRate + wobble;
+  const astern = throttle < -0.05;
+  const helmSign = astern ? -1 : 1;
+  const turnRate = astern
+    ? 0.022*(0.25 + spdFrac*0.55) // astern: weaker rudder authority
+    : 0.030*(0.35 + spdFrac*0.65);
+  PL.a += (steer * helmSign)*turnRate + wobble;
 
   const boosted = PL.boostT>0;
   const maxSpd  = boosted ? MAX_SPD*1.4 : MAX_SPD;
@@ -687,12 +691,15 @@ function update(dt){
     PL.vy -= Math.cos(PL.a)*throttle*ACCEL*0.35;
   }
 
-  // Hull drag — forward coasts, lateral resists hard
+  // Hull drag / slip: more drift and slide, especially in turns
   const fwdX=Math.sin(PL.a), fwdY=-Math.cos(PL.a);
   const fd=PL.vx*fwdX+PL.vy*fwdY;
   const lx=PL.vx-fd*fwdX, ly=PL.vy-fd*fwdY;
-  PL.vx=fd*fwdX*0.974+lx*0.72;
-  PL.vy=fd*fwdY*0.974+ly*0.72;
+  const steerSlip = 1 - Math.min(0.22, Math.abs(steer)*0.22); // turning increases side-slip
+  const fwdKeep = 0.982;
+  const latKeep = 0.86 * steerSlip;
+  PL.vx=fd*fwdX*fwdKeep+lx*latKeep;
+  PL.vy=fd*fwdY*fwdKeep+ly*latKeep;
 
   PL.spd=Math.sqrt(PL.vx**2+PL.vy**2);
   if(PL.spd>maxSpd){ PL.vx=PL.vx/PL.spd*maxSpd; PL.vy=PL.vy/PL.spd*maxSpd; PL.spd=maxSpd; }
