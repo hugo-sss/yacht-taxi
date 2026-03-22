@@ -469,8 +469,9 @@ function newFare() {
   const avail = LOCS.filter((_,i)=>i!==pickupIdx);
   const pu    = avail[Math.floor(Math.random()*avail.length)];
   pickupIdx   = LOCS.indexOf(pu);
-  const dests = LOCS.filter(l=>l!==pu);
-  const dest  = dests[Math.floor(Math.random()*dests.length)];
+  const nearDests = LOCS.filter(l=>l!==pu && Math.hypot(l.cx-pu.cx, l.cy-pu.cy) < 900);
+  const destPool = nearDests.length ? nearDests : LOCS.filter(l=>l!==pu);
+  const dest  = destPool[Math.floor(Math.random()*destPool.length)];
   const vip   = VIPS[Math.floor(Math.random()*VIPS.length)];
   const tight = vip.effect==='tight_timer';
   const pickupSlipIdx = Math.floor(Math.random()*4);
@@ -606,16 +607,19 @@ function getInput(){
     const mag=Math.sqrt(jState.dx**2+jState.dy**2);
     if(mag>8){
       // dx = steer (left/right), dy = throttle (up/down)
-      // Map linearly — full 36px = full input
       s = Math.max(-1, Math.min(1, jState.dx / 36));
       t = Math.max(-1, Math.min(1, -jState.dy / 36));
+      // Helm feel: forward-biased throttle, deliberate reverse only
+      if(t > 0) t = Math.max(0, (t-0.08)/0.92);      // tiny deadzone then smooth forward
+      else      t = (t < -0.55) ? ((t+0.55)/0.45) : 0; // only strong pull-down triggers reverse
     }
   }
   if(tBtn.fwd)t+=1;
   if(tBtn.rev)t-=1;
-  // Clamp combined
+  // Clamp combined + steering deadzone to reduce twitch
   t = Math.max(-1, Math.min(1, t));
   s = Math.max(-1, Math.min(1, s));
+  if(Math.abs(s)<0.08) s=0;
   return{steer:s,throttle:t};
 }
 
@@ -664,9 +668,9 @@ function update(dt){
   // Drunk wobble
   const wobble=(fare&&fare.pickedUp&&fare.vip.effect==='wobble')?Math.sin(wave*3)*0.025:0;
 
-  // Steering — only bites at speed, very slow at low speed
+  // Steering — give more low-speed rudder authority (less fwd/rev juggling)
   const spdFrac = Math.min(1, Math.abs(PL.spd)/MAX_SPD);
-  const turnRate = 0.026*(0.12 + spdFrac*0.88);
+  const turnRate = 0.030*(0.35 + spdFrac*0.65);
   PL.a += steer*turnRate + wobble;
 
   const boosted = PL.boostT>0;
@@ -879,7 +883,7 @@ function update(dt){
       const sl=fare.pickupSlip;
       const inSlip = Math.abs(PL.x-sl.cx)<Math.abs(sl.w/2)+12 && Math.abs(PL.y-sl.cy)<Math.abs(sl.h/2)+12;
       if(inSlip){
-        if(PL.spd>3.5){
+        if(PL.spd>4.8){
           // Too fast — bounce out
           PL.vx*=-0.5; PL.vy*=-0.5; cam.shake=0.2;
           popup('⚠️ TOO FAST! SLOW DOWN!');
@@ -917,7 +921,7 @@ function update(dt){
         gameT=Math.min(90,gameT+10);
         popup('+$'+earned+'💰'+bonusMsg+' · STREAK x'+(1 + Math.min(streak,8)*0.15).toFixed(2));
         fare=null; setTimeout(newFare,600);
-      } else if(inSlip&&PL.spd>3.5){
+      } else if(inSlip&&PL.spd>4.8){
         PL.vx*=-0.5; PL.vy*=-0.5; cam.shake=0.2;
         popup('⚠️ TOO FAST TO DOCK!');
       }
