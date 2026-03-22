@@ -418,6 +418,7 @@ const VIPS = [
 
 // ── GAME STATE ─────────────────────────────────────────
 let running=false, gameT=60, cash=0, fares=0, lastTs=0, wave=0;
+let streak=0, bestStreak=0, crashCount=0, lastEndReason='Time ran out';
 
 // ── Weather system ──────────────────────────────────────────────────────────
 const WEATHERS = ['clear','clear','clear','choppy','fog','storm','waterspout'];
@@ -471,14 +472,22 @@ function newFare() {
   const tight = vip.effect==='tight_timer';
   const pickupSlipIdx = Math.floor(Math.random()*4);
   const destSlipIdx   = Math.floor(Math.random()*4);
+  const routeRisk = Math.random()<0.45 ? 'risk' : 'safe';
+  const routeMult = routeRisk==='risk' ? 1.7 : 1.0;
   fare = {
     pickup:pu, dest, vip, pickedUp:false,
     t: tight?18:24, maxT: tight?18:24,
     bonus:1, nocrash:true, topSpeed:0,
     passedLocs:new Set(),
+    routeRisk, routeMult,
     pickupSlip: getActiveSlip(pu, pickupSlipIdx),
     destSlip:   getActiveSlip(dest, destSlipIdx),
   };
+  if(fares===0 && cash===0){
+    fare.bonus=1.15;
+    popup('🎯 HOT START BONUS ACTIVE!');
+  }
+  popup(routeRisk==='risk' ? '🟥 RISK ROUTE 1.7x payout' : '🟩 SAFE ROUTE 1.0x payout');
   updateFareUI();
 }
 
@@ -489,7 +498,8 @@ function updateFareUI() {
   document.getElementById('f-pax').textContent  = fare.pickedUp ? fare.vip.e+' '+fare.vip.n : '→ PICKUP: '+fare.pickup.name;
   document.getElementById('f-dest').textContent = fare.pickedUp ? fare.dest.name : '???';
   document.getElementById('f-timer').textContent= Math.ceil(fare.t)+'s';
-  const earn = Math.floor(fare.vip.$ * fare.bonus);
+  const streakMult = 1 + Math.min(streak,8)*0.15;
+  const earn = Math.floor(fare.vip.$ * fare.bonus * fare.routeMult * streakMult);
   document.getElementById('f-earn').textContent = '$'+earn;
   const timerEl=document.getElementById('f-timer');
   timerEl.className='ftimer'+(fare.t<8?' urgent':'');
@@ -693,8 +703,11 @@ function update(dt){
   if(hitIsland(nx,ny,16)){
     PL.vx*=-0.35; PL.vy*=-0.35;
     cam.shake=0.4;
+    crashCount++;
+    lastEndReason='Hull collision';
     if(fare&&fare.pickedUp){fare.nocrash=false;}
-    popup('💥 CRUNCH! -5s'); gameT=Math.max(0,gameT-5);
+    streak=0;
+    popup('💥 CRUNCH! -5s (streak reset)'); gameT=Math.max(0,gameT-5);
   } else {
     PL.x=Math.max(20,Math.min(WW-20,nx));
     PL.y=Math.max(20,Math.min(WH-20,ny));
@@ -824,7 +837,10 @@ function update(dt){
       PL.vx+=Math.cos(ang)*2.5; PL.vy+=Math.sin(ang)*2.5;
       n.spd*=0.5; n.a=ang+Math.PI;
       cam.shake=0.3;
-      popup('💥 COLLISION! -3s'); gameT=Math.max(0,gameT-3);
+      crashCount++;
+      lastEndReason='Boat collision';
+      streak=0;
+      popup('💥 COLLISION! -3s (streak reset)'); gameT=Math.max(0,gameT-3);
       if(fare&&fare.pickedUp){fare.nocrash=false;}
     } else if(d<36&&d>24&&PL.spd>4){
       cash+=75; popup('🔥 NEAR MISS! +$75');
@@ -852,8 +868,8 @@ function update(dt){
     fare.t-=dt;
     fare.bonus=Math.max(0.3,fare.t/fare.maxT);
 
-    if(!fare.pickedUp&&fare.t<=0){popup('⏰ THEY LEFT!');fare=null;pickupIdx=null;setTimeout(newFare,1200);return;}
-    if(fare.pickedUp&&fare.t<=0){popup('⏰ KICKED OUT!');fare=null;setTimeout(newFare,1200);return;}
+    if(!fare.pickedUp&&fare.t<=0){popup('⏰ THEY LEFT! (streak reset)');lastEndReason='Passenger timeout';streak=0;fare=null;pickupIdx=null;setTimeout(newFare,1200);return;}
+    if(fare.pickedUp&&fare.t<=0){popup('⏰ KICKED OUT! (streak reset)');lastEndReason='Delivery timeout';streak=0;fare=null;setTimeout(newFare,1200);return;}
 
     // Slip docking — must be in the slip AND slow
     if(!fare.pickedUp&&fare.pickupSlip){
@@ -878,8 +894,9 @@ function update(dt){
       const sl=fare.destSlip;
       const inSlip = Math.abs(PL.x-sl.cx)<Math.abs(sl.w/2)+12 && Math.abs(PL.y-sl.cy)<Math.abs(sl.h/2)+12;
       if(inSlip&&PL.spd<=3.5){
-      let earned=Math.floor(fare.vip.$*fare.bonus);
-      let bonusMsg='';
+      const streakMult = 1 + Math.min(streak,8)*0.15;
+      let earned=Math.floor(fare.vip.$*fare.bonus*fare.routeMult*streakMult);
+      let bonusMsg = fare.routeRisk==='risk' ? ' RISK ROUTE!' : ' SAFE ROUTE';
       // Speed bonus (Sheikh, Race Driver, Ambassador)
       if(fare.vip.effect==='speed_bonus'&&fare.bonus>0.7){earned=Math.floor(earned*2);bonusMsg=' 2X SPEED BONUS!';}
       // No crash bonus (Oligarch)
@@ -892,8 +909,10 @@ function update(dt){
       if(PL.spd<2){earned+=200;bonusMsg+=' PERFECT DOCK! +$200';}
 
         cash+=earned; fares++;
+        streak++;
+        bestStreak=Math.max(bestStreak, streak);
         gameT=Math.min(90,gameT+10);
-        popup('+$'+earned+'💰'+bonusMsg);
+        popup('+$'+earned+'💰'+bonusMsg+' · STREAK x'+(1 + Math.min(streak,8)*0.15).toFixed(2));
         fare=null; setTimeout(newFare,600);
       } else if(inSlip&&PL.spd>3.5){
         PL.vx*=-0.5; PL.vy*=-0.5; cam.shake=0.2;
@@ -1947,6 +1966,7 @@ function drawHelm(){
 function startGame(){
   PL.x=WW/2;PL.y=WH/2;PL.a=0;PL.vx=0;PL.vy=0;PL.spd=0;PL.wake=[];PL.boostT=0;PL.nocrash=true;
   cash=0;fares=0;gameT=60;fare=null;pickupIdx=null;
+  streak=0;bestStreak=0;crashCount=0;lastEndReason='Time ran out';
   NPCS.forEach(n=>{n.wake=[];n.scatter=0;});
   windAngle=Math.random()*Math.PI*2;
   document.getElementById('overlay').classList.add('gone');
@@ -1963,7 +1983,7 @@ function endGame(){
   document.getElementById('ov-cash').textContent ='$'+cash.toLocaleString();
   document.getElementById('ov-fares').textContent=fares;
   document.getElementById('start-btn').textContent='PLAY AGAIN';
-  document.querySelector('.ov-sub').textContent='Back to the marina, skipper.';
+  document.querySelector('.ov-sub').textContent=`Run recap: best streak x${(1+Math.min(bestStreak,8)*0.15).toFixed(2)} · crashes ${crashCount} · ${lastEndReason}`;
   document.getElementById('fare-box').classList.add('hidden');
   document.getElementById('vip-quip').style.opacity='0';
 }
