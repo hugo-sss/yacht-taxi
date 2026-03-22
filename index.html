@@ -566,8 +566,11 @@ function bindBtn(id,key){
 bindBtn('btn-fwd','fwd');
 bindBtn('btn-rev','rev');
 
-document.getElementById('btn-horn').addEventListener('touchstart',e=>{e.preventDefault();blastHorn();},{passive:false});
-document.getElementById('btn-horn').addEventListener('mousedown',blastHorn);
+const hornButton = document.getElementById('horn-btn') || document.getElementById('btn-horn');
+if (hornButton) {
+  hornButton.addEventListener('touchstart', e => { e.preventDefault(); blastHorn(); }, { passive: false });
+  hornButton.addEventListener('mousedown', blastHorn);
+}
 
 function getInput(){
   let s=0,t=0;
