@@ -297,21 +297,15 @@ function getMarinaRects(loc) {
 
 // ── ISLANDS + TERRAIN ──────────────────────────────────
 const ISLANDS = [
-  // Minimal, believable harbour land masses + breakwater blocks
-  {x:0,    y:0,    w:2200, h:140,  sandy:false},   // north shoreline
-  {x:0,    y:2060, w:2200, h:140,  sandy:false},   // south shoreline
-  {x:0,    y:0,    w:140,  h:2200, sandy:false},   // west shoreline
-  {x:2060, y:0,    w:140,  h:2200, sandy:false},   // east shoreline
+  // Outer shoreline only (keep marina basin open and blue)
+  {x:0,    y:0,    w:2200, h:140,  sandy:false},
+  {x:0,    y:2060, w:2200, h:140,  sandy:false},
+  {x:0,    y:0,    w:140,  h:2200, sandy:false},
+  {x:2060, y:0,    w:140,  h:2200, sandy:false},
 
-  // Harbour entrance breakwaters (leave a clear gap)
+  // Small entrance breakwaters only
   {x:140, y:700,  w:250, h:70, sandy:false},
   {x:140, y:1430, w:250, h:70, sandy:false},
-
-  // Marina service land / yacht club blocks
-  {x:520,  y:300,  w:980, h:120, sandy:true},
-  {x:520,  y:1780, w:980, h:120, sandy:true},
-  {x:1650, y:760,  w:220, h:700, sandy:true},
-  {x:300,  y:760,  w:220, h:700, sandy:true},
 ];
 
 // Coastline polygon (land mass around world edge — Bahamas style jagged)
@@ -960,13 +954,25 @@ function update(dt){
 
   // wind display removed
 
-  // Camera + NaN safety recovery
+  // Camera + hard recovery (prevents off-screen/frozen camera states)
   if(!Number.isFinite(PL.x)||!Number.isFinite(PL.y)||!Number.isFinite(PL.vx)||!Number.isFinite(PL.vy)){
     PL.x=1140; PL.y=1080; PL.vx=0; PL.vy=0; PL.spd=0;
+  }
+  if(!Number.isFinite(cam.x)||!Number.isFinite(cam.y)){
+    cam.x=PL.x-W/2; cam.y=PL.y-H/2;
   }
   const shk=cam.shake>0?(Math.random()-0.5)*cam.shake*12:0;
   cam.x+=(PL.x-W/2-cam.x)*0.14+shk;
   cam.y+=(PL.y-H/2-cam.y)*0.14+shk;
+
+  // If player drifts too far out of view, snap camera back immediately
+  const margin = 120;
+  const outOfView = PL.x < cam.x+margin || PL.x > cam.x+W-margin || PL.y < cam.y+margin || PL.y > cam.y+H-margin;
+  if(outOfView){
+    cam.x = PL.x - W/2;
+    cam.y = PL.y - H/2;
+  }
+
   cam.x=Math.max(0,Math.min(WW-W,cam.x));
   cam.y=Math.max(0,Math.min(WH-H,cam.y));
 }
@@ -1145,8 +1151,8 @@ function drawMarina(loc, isPickup, isDest) {
     X.fillStyle='rgba(0,0,0,0.28)'; X.fillRect(ax+4,ay+4,aw,ah);
     X.fillStyle='#7a552b'; X.fillRect(ax,ay,aw,ah);       // wood base
     X.fillStyle='#c79a56'; X.fillRect(ax+3,ay+3,aw-6,ah-6); // teak deck
-    X.strokeStyle='rgba(0,0,0,0.2)'; X.lineWidth=0.8;
-    const step=8;
+    X.strokeStyle='rgba(70,40,15,0.45)'; X.lineWidth=1.1;
+    const step=7;
     if(dir==='h'){for(let p=ay+8;p<ay+ah-3;p+=step){X.beginPath();X.moveTo(ax+3,p);X.lineTo(ax+aw-3,p);X.stroke();}}
     else{for(let p=ax+8;p<ax+aw-3;p+=step){X.beginPath();X.moveTo(p,ay+3);X.lineTo(p,ay+ah-3);X.stroke();}}
     X.strokeStyle='#6a4723'; X.lineWidth=1.6; X.strokeRect(ax,ay,aw,ah);
@@ -1171,16 +1177,6 @@ function drawMarina(loc, isPickup, isDest) {
 
   if(face==='S'||face==='N'){
     const sign=face==='S'?1:-1;
-    // Land backing — timber/sand tones
-    X.fillStyle='#b89a64'; X.fillRect(cx-200,cy+sign*178,400,sign*60);
-    // Harbour buildings
-    X.fillStyle='#d8c39a'; X.fillRect(cx+50, cy+sign*180,90,sign*50);
-    X.fillStyle='#f1e6cf'; X.fillRect(cx+52, cy+sign*182,86,sign*46);
-    X.fillStyle='#d8c39a'; X.fillRect(cx-150,cy+sign*182,80,sign*44);
-    // Building windows
-    X.fillStyle='rgba(255,200,100,0.85)';
-    for(let wi=0;wi<4;wi++) X.fillRect(cx+56+wi*18,cy+sign*188,10,8);
-    for(let wi=0;wi<3;wi++) X.fillRect(cx-146+wi*20,cy+sign*188,12,8);
     // Main quay (back wall)
     drawPier(cx-180,cy+sign*170,360,sign*18,'h');
     // 5 finger piers (shorter, easier approach)
@@ -1210,11 +1206,6 @@ function drawMarina(loc, isPickup, isDest) {
 
   } else {
     const sign=face==='E'?1:-1;
-    X.fillStyle='#b89a64'; X.fillRect(cx+sign*178,cy-200,sign*60,400);
-    X.fillStyle='#d8c39a'; X.fillRect(cx+sign*180,cy+50,sign*50,90);
-    X.fillStyle='#f1e6cf'; X.fillRect(cx+sign*182,cy+52,sign*46,86);
-    X.fillStyle='rgba(255,200,100,0.85)';
-    for(let wi=0;wi<4;wi++) X.fillRect(cx+sign*188,cy+56+wi*18,8,10);
     drawPier(cx+sign*170,cy-180,sign*18,360,'v');
     for(let i=0;i<5;i++) drawPier(cx+sign*52,cy-140+i*68,sign*102,14,'h');
     for(let i=0;i<4;i++){
